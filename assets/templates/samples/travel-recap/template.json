@@ -1,0 +1,38 @@
+{
+  "manifest": {
+    "id": "travel-recap",
+    "name": "旅行回顾",
+    "version": "1.0.0",
+    "author": "longcut",
+    "description": "竖屏旅行短片：主视频 + 1~3 张照片推拉 + 背景音乐 + 标题/地点字幕",
+    "tags": ["travel", "recap", "vertical"],
+    "aspect": "9:16",
+    "defaultDuration": 15.0,
+    "slots": [
+      {"id":"main_video","role":"main_video","accepts":["video"],"min":1,"max":1,"preferredDuration":6.0},
+      {"id":"photo","role":"photo","accepts":["image"],"min":1,"max":3,"preferredDuration":2.0,"kenBurns":true},
+      {"id":"music","role":"music","accepts":["audio"],"min":0,"max":1,"beatSync":true},
+      {"id":"title","role":"title_text","accepts":["text"],"min":1,"max":1,"placeholder":"{{title}}"},
+      {"id":"subtitle","role":"subtitle","accepts":["text"],"min":0,"max":1,"placeholder":"{{place}}"}
+    ]
+  },
+  "blueprint": {
+    "video": {"width":1080,"height":1920,"rateNum":30,"rateDen":1,"colorSpace":"sdr"},
+    "tracks": [
+      {"id":"V1","kind":"video"},
+      {"id":"V2","kind":"video"},
+      {"id":"A1","kind":"audio"}
+    ],
+    "clips": [
+      {"slot":"main_video","track":"V1","start":0,"duration":"{{slot.main_video.duration}}",
+       "scale":1.0,"transition_in":{"id":"fade","duration":0.5}},
+      {"slot":"photo","track":"V2","start":"{{prev.end}}","duration":"{{slot.photo.duration}}",
+       "kenBurns":true,"opacity":1.0},
+      {"slot":"music","track":"A1","start":0,"duration":"{{slot.music.duration}}","volume":0.5},
+      {"slot":"title","track":"V2","start":1.0,"duration":2.5,"text":"{{title}}",
+       "textStyle":{"size":88,"align":"center","color":"#ffffff"}},
+      {"slot":"subtitle","track":"V2","start":3.5,"duration":2.0,"text":"{{place}}",
+       "textStyle":{"size":44,"align":"center","color":"#e6f2ff"}}
+    ]
+  }
+}

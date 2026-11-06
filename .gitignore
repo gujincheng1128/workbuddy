@@ -1,0 +1,101 @@
+ssh.sh
+
+## Do not remove these
+test/assets/
+test/assets/*
+
+# Rust
+target/
+**/target/
+*.pdb
+
+# Nix build output
+/result
+/result-*
+
+# Python (tooling and one-off scripts live at the repo root for now)
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# Editors and OS
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Scratch media at the repo root.
+#
+# Test clips are large and change constantly, so they do not belong in git
+# history. Fixtures that tests genuinely depend on should live in a `fixtures/`
+# directory next to those tests and be committed deliberately - this pattern
+# only covers loose files dropped at the top level.
+/*.mp4
+/*.mov
+/*.mkv
+/*.webm
+/*.mp3
+/*.wav
+/*.flac
+/*.aac
+/scratch_*
+
+# Local environment
+.env
+.env.local
+
+# An FFmpeg development build unpacked locally for the linked engine
+# (headers + import libraries), pointed at with FFMPEG_DIR. Large and
+# machine-specific.
+/vendor/
+/ffmpeg-dev/
+# FFmpeg built for a phone by src/scripts/ffmpeg-mobile.sh: sources,
+# build trees and the installed prefixes, all machine-built.
+/src/vendor/
+
+# Audits are working notes for whoever runs them, not part of the source
+audit/
+
+# LongCut windows-gnu lane: machine-local toolchains, caches and artifacts.
+# Deliberately NOT ignored: .cargo/config.toml and
+# tools/llvm/bin/libclang.dll - the CI runner needs both right after
+# checkout (bindgen's libclang is vendored on purpose, 65 MB, under the
+# 100 MB per-file limit). Everything else here is rebuilt by the workflow.
+/dist/
+/src/target-gnu/
+/tools/_tmp/
+/tools/mingw/
+/tools/ffmpeg/
+/tools/cmake-dist/
+/tools/llvm-install/
+/tools/llvm-libclang/
+/tools/wix/
+/tools/nuget-packages/
+/tools/dotnet-home/
+/.cargo/registry/
+/.cargo/git/
+/.rustup/
+*.msi
+*.wixpdb
+
+# Local-only caches and binaries (keep the committed .cargo/config.toml)
+.cargo/bin/
+.cargo/.global-cache
+.cargo/.package-cache
+.cargo/.package-cache-mutate
+.workbuddy/
+.claude/
+
+# Extra machine-local tool dirs (the committed vendored libclang in
+# tools/llvm/bin/libclang.dll is kept on purpose for CI bindgen).
+/tools/cmake/
+/tools/_7z/
+/tools/llvm-mingw/
+/tools/portable/
+/tools/vstools/

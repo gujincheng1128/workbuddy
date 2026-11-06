@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Concat's Windows Installer package, the .msi beside the Inno Setup .exe.
+
+  Built by build-app.yml with WiX from the staged folder the .exe is made
+  of, so the two installers ship the same files. The .exe is the
+  one a person double-clicks; this is the one an administrator deploys -
+  Group Policy, Intune, winget - and it installs for the machine, into
+  Program Files, with a Start menu entry and a clean uninstall. Handed in:
+
+    wix build -arch x64 -d Version=0.2.10 -d Root=C:\...\Concat-0.2.9
+              -d Stage=C:\...\dist\LongCut-win64-gnu
+              -o dist\LongCut-0.2.10-win64-gnu.msi assets\windows\concat.wxs
+
+  Root is the repository: WiX resolves a source path against where it is
+  run from, not against this file.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <!-- One upgrade code for the life of the product, so a newer .msi
+       replaces an older one rather than sitting beside it. LongCut has
+       its own code: sharing upstream Concat's would cross-upgrade them. -->
+  <Package Name="LongCut"
+           Manufacturer="龙儿剪辑 (LongCut)"
+           Version="$(var.Version)"
+           UpgradeCode="9DB7DBA0-8FAA-4526-B88B-B0B6E23D5AF5"
+           Scope="perMachine"
+           Language="1033">
+    <MajorUpgrade DowngradeErrorMessage="A newer version of LongCut is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <Icon Id="concat.ico" SourceFile="$(var.Root)\assets\icons\concat.ico" />
+    <Property Id="ARPPRODUCTICON" Value="concat.ico" />
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/jub0t/Concat" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="LongCut" />
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="ShortcutFolder" Name="LongCut" />
+    </StandardDirectory>
+
+    <Feature Id="Main" Title="LongCut" Level="1">
+      <ComponentGroupRef Id="Program" />
+      <ComponentRef Id="StartMenu" />
+    </Feature>
+
+    <!-- The staged folder, listed explicitly. WiX 4.0.5 has no <Files>
+         harvest element (WIX0005), and an explicit list also keeps a stray
+         temporary file out of the .msi. Keep this in step with
+         tools/stage-portable.sh; tools/build-installer.ps1 checks it. -->
+    <ComponentGroup Id="Program" Directory="INSTALLFOLDER">
+      <Component Id="ProgramFiles" Guid="A1B2C3D4-1111-4A1B-9C3E-000000000001">
+        <File Id="f01" Source="$(var.Stage)\longcut.exe" KeyPath="yes" />
+        <File Id="f02" Source="$(var.Stage)\avcodec-63.dll" />
+        <File Id="f03" Source="$(var.Stage)\avdevice-63.dll" />
+        <File Id="f04" Source="$(var.Stage)\avfilter-12.dll" />
+        <File Id="f05" Source="$(var.Stage)\avformat-63.dll" />
+        <File Id="f06" Source="$(var.Stage)\avutil-61.dll" />
+        <File Id="f07" Source="$(var.Stage)\swresample-7.dll" />
+        <File Id="f08" Source="$(var.Stage)\swscale-10.dll" />
+        <File Id="f09" Source="$(var.Stage)\libstdc++-6.dll" />
+        <File Id="f10" Source="$(var.Stage)\libgcc_s_seh-1.dll" />
+        <File Id="f11" Source="$(var.Stage)\libwinpthread-1.dll" />
+        <File Id="f12" Source="$(var.Stage)\libgomp-1.dll" />
+        <File Id="f13" Source="$(var.Stage)\LICENSE" />
+        <File Id="f14" Source="$(var.Stage)\THIRD_PARTY_NOTICES.md" />
+        <File Id="f15" Source="$(var.Stage)\BUILD_INFO.txt" />
+        <File Id="f16" Source="$(var.Stage)\RUNTIME-DEPENDENCIES.md" />
+        <File Id="f17" Source="$(var.Stage)\run-longcut.bat" />
+        <File Id="f18" Source="$(var.Stage)\README.txt" />
+      </Component>
+    </ComponentGroup>
+
+    <Component Id="StartMenu" Directory="ShortcutFolder" Guid="2F0B7C51-6E4D-4A1B-9C3E-8D5F1A2B3C44">
+      <Shortcut Id="StartMenuShortcut"
+                Name="LongCut"
+                Description="Video editor"
+                Target="[INSTALLFOLDER]longcut.exe"
+                WorkingDirectory="INSTALLFOLDER"
+                Icon="concat.ico" />
+      <!-- The way in when a graphics driver draws the window as coloured
+           squares: it turns off Settings > General > Draw on the GPU,
+           which that window hides. -->
+      <Shortcut Id="SafeGraphicsShortcut"
+                Name="LongCut (safe graphics)"
+                Description="LongCut, drawn in software"
+                Target="[INSTALLFOLDER]longcut.exe"
+                Arguments="--software"
+                WorkingDirectory="INSTALLFOLDER"
+                Icon="concat.ico" />
+      <RemoveFolder Id="RemoveShortcutFolder" On="uninstall" />
+      <RegistryValue Root="HKCU" Key="Software\LongCut" Name="StartMenu" Type="integer" Value="1" KeyPath="yes" />
+    </Component>
+  </Package>
+</Wix>

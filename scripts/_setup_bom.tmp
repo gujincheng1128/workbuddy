@@ -1,0 +1,221 @@
+﻿# setup-build-env.ps1
+# ============================================================
+#  龙儿剪辑 LongCut - 一键搭建 Windows 构建环境并编译
+#  以 Concat (AGPL-3.0) 为基石的"龙儿自用版"视频编辑器。
+#
+#  用法 (管理员 PowerShell):
+#    cd D:\AiSof\WorkBuddy\Concat-0.2.9
+#    powershell -ExecutionPolicy Bypass -File scripts\setup-build-env.ps1
+#
+#  约定:
+#    - 所有下载/缓存/工具链都落在项目目录内, 不写 C 盘 TEMP、不改用户级环境变量。
+#    - 本文件必须保存为 UTF-8 with BOM: PowerShell 5.1 默认按 ANSI(GBK) 读取
+#      无 BOM 的 .ps1, 中文注释会被解出乱码并产生几十个解析错误。
+#    - VS(MSVC) 优先; 装不上则回退 MinGW-w64 + windows-gnu。
+#    - GNU 分支统一委托 tools/build-gnu.sh (已验证链路), 不在这里重复维护
+#      BINDGEN_EXTRA_CLANG_ARGS / LIBCLANG_PATH / CC / CXX / FFMPEG_DIR。
+#
+#  产物: src\target-gnu\x86_64-pc-windows-gnu\debug\longcut.exe (GNU)
+#        src\target\x86_64-pc-windows-msvc\debug\longcut.exe      (MSVC)
+# ============================================================
+param(
+    [string]$ProjectDir = (Get-Location).Path
+)
+$ErrorActionPreference = "Stop"
+
+function Require-Elevated {
+    $id = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+    $pr = New-Object System.Security.Principal.WindowsPrincipal($id)
+    if (-not $pr.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)) {
+        Write-Host "请以管理员身份运行 PowerShell 后再执行本脚本。" -ForegroundColor Red
+        exit 1
+    }
+}
+
+# PowerShell 5.1 不会把 native exe 的非零退出码变成异常, 必须显式检查。
+function Assert-Exit([string]$What) {
+    if ($LASTEXITCODE -ne 0) { throw "$What failed (exit $LASTEXITCODE)" }
+}
+
+# 主源 + 代理双路, 且校验下载体积, 避免把代理返回的短错误页当安装包。
+function Get-FileOrProxy([string]$Primary, [string]$Proxy, [string]$Out, [int]$MinBytes) {
+    foreach ($u in @($Primary, $Proxy)) {
+        try {
+            Write-Host "    下载 $u" -ForegroundColor Cyan
+            Invoke-WebRequest $u -OutFile $Out -TimeoutSec 600 -ErrorAction Stop
+            $sz = (Get-Item $Out).Length
+            if ($sz -ge $MinBytes) { return $true }
+            Write-Host "    文件过小 ($sz B), 换源重试" -ForegroundColor Yellow
+        } catch {
+            Write-Host "    失败: $($_.Exception.Message)" -ForegroundColor Yellow
+        }
+    }
+    return $false
+}
+
+Require-Elevated
+
+# 全部装进项目目录, 绝不写 C 盘
+$CARGO_HOME = Join-Path $ProjectDir ".cargo"
+$RUSTUP_HOME = Join-Path $ProjectDir ".rustup"
+$TOOLS      = Join-Path $ProjectDir "tools"
+$FFMPEG     = Join-Path $TOOLS "ffmpeg"
+$MINGW      = Join-Path $TOOLS "mingw"
+$DOWNLOADS  = Join-Path $TOOLS "_tmp"
+New-Item -ItemType Directory -Force -Path $CARGO_HOME,$RUSTUP_HOME,$TOOLS,$FFMPEG,$MINGW,$DOWNLOADS | Out-Null
+
+# 只设进程级环境变量: 不写用户级注册表、不留跨会话污染、不碰 C 盘。
+$env:CARGO_HOME = $CARGO_HOME
+$env:RUSTUP_HOME = $RUSTUP_HOME
+$env:Path = "$CARGO_HOME\bin;$env:Path"
+
+# ---- 1) Rust (rsproxy 国内镜像) ---------------------------------------
+if (-not (Test-Path (Join-Path $CARGO_HOME "bin\cargo.exe"))) {
+    Write-Host "==> 安装 Rust (stable, >= 1.93) [rsproxy 镜像] ..." -ForegroundColor Cyan
+    $env:RUSTUP_DIST_SERVER = "https://rsproxy.cn"
+    $env:RUSTUP_UPDATE_ROOT = "https://rsproxy.cn/rustup"
+    $ru = Join-Path $DOWNLOADS "rustup-init.exe"
+    if (-not (Get-FileOrProxy "https://rsproxy.cn/rustup-init.exe" "https://rsproxy.cn/rustup-init.exe" $ru 1000000)) {
+        throw "rustup-init.exe 下载失败"
+    }
+    & $ru -y --default-toolchain stable --profile minimal --no-modify-path
+    Assert-Exit "rustup-init"
+}
+
+# 镜像配置追加而非覆盖: .cargo/config.toml 里还有 windows-gnu 的 linker /
+# dlltool 设置, 整文件重写会让 gnu 链接直接失效。
+$cargoCfg = Join-Path $CARGO_HOME "config.toml"
+$current = if (Test-Path $cargoCfg) { [System.IO.File]::ReadAllText($cargoCfg) } else { "" }
+if ($current -notmatch "rsproxy-sparse") {
+    $mirror = @"
+
+[source.crates-io]
+replace-with = "rsproxy-sparse"
+[source.rsproxy-sparse]
+registry = "sparse+https://rsproxy.cn/index/"
+[registries.rsproxy]
+index = "https://rsproxy.cn/crates.io-index"
+[net]
+git-fetch-with-cli = true
+"@
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::AppendAllText($cargoCfg, $mirror, $utf8NoBom)
+    Write-Host "    已追加 rsproxy 镜像配置" -ForegroundColor Green
+}
+
+# ---- 2) C 工具链: 优先 VS(MSVC), 否则 MinGW(gnu) -----------------------
+$UseGnu = $false
+$cl = Get-Command cl.exe -ErrorAction SilentlyContinue
+if (-not $cl) {
+    Write-Host "==> 尝试安装 VS2022 生成工具 (MSVC + WinSDK + CMake) ..." -ForegroundColor Cyan
+    $boot = Join-Path $TOOLS "vs_BuildTools.exe"
+    if (-not (Get-FileOrProxy "https://aka.ms/vs/17/release/vs_BuildTools.exe" "https://aka.ms/vs/17/release/vs_BuildTools.exe" $boot 1000000)) {
+        Write-Host "    VS 引导程序下载失败, 跳过 MSVC" -ForegroundColor Yellow
+    } else {
+        $vsDir = Join-Path $TOOLS "vstools"
+        & $boot --installPath $vsDir `
+            --add Microsoft.VisualStudio.Workload.VCTools `
+            --add Microsoft.VisualStudio.Component.Windows11SDK.26100 `
+            --add Microsoft.VisualStudio.Component.VC.CMake.Project `
+            --passive --wait
+        $cl = Get-ChildItem $vsDir -Recurse -Filter cl.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+    }
+}
+if ($cl) {
+    Write-Host "    使用 MSVC 工具链: $($cl.FullName)" -ForegroundColor Green
+    $VS_TOOLS = $cl.FullName | Split-Path | Split-Path | Split-Path | Split-Path
+    $env:VS_TOOLS_DIR = $VS_TOOLS
+} else {
+    Write-Host "    VS 不可用 -> 回退 MinGW-w64 + windows-gnu 目标" -ForegroundColor Yellow
+    $UseGnu = $true
+    if (-not (Test-Path (Join-Path $MINGW "mingw64\bin\gcc.exe"))) {
+        $mw7z = Join-Path $MINGW "mingw.7z"
+        $mwUrl = "https://github.com/niXman/mingw-builds-binaries/releases/download/16.2.0-rt_v14-rev1/x86_64-16.2.0-release-posix-seh-msvcrt-rt_v14-rev1.7z"
+        $mwProxy = "https://ghproxy.com/https://github.com/niXman/mingw-builds-binaries/releases/download/16.2.0-rt_v14-rev1/x86_64-16.2.0-release-posix-seh-msvcrt-rt_v14-rev1.7z"
+        Write-Host "    下载 MinGW-w64 ..." -ForegroundColor Cyan
+        if (-not (Get-FileOrProxy $mwUrl $mwProxy $mw7z 80000000)) { throw "MinGW 下载失败" }
+        if (-not (Get-Command python -ErrorAction SilentlyContinue)) { throw "需要 python + py7zr 来解压 .7z" }
+        # 路径经环境变量传入, 不插值进 Python 源码, 杜绝引号注入面。
+        $env:LONGCUT_TOOL_DIR = $MINGW
+        python -c "import os, py7zr; d=os.environ['LONGCUT_TOOL_DIR']; py7zr.SevenZipFile(os.path.join(d,'mingw.7z'),'r').extractall(d)"
+        Assert-Exit "py7zr (MinGW 解压)"
+        if (-not (Test-Path (Join-Path $MINGW "mingw64\bin\gcc.exe"))) { throw "MinGW 解压后未找到 gcc.exe" }
+    }
+    $env:Path = "$MINGW\mingw64\bin;$env:Path"
+    & "$CARGO_HOME\bin\rustup.exe" target add x86_64-pc-windows-gnu
+    Assert-Exit "rustup target add"
+}
+
+# ---- 3) FFmpeg 开发库 (BtbN; 失败走 ghproxy) ---------------------------
+if (-not (Test-Path (Join-Path $FFMPEG "include\libavcodec\avcodec.h"))) {
+    Write-Host "==> 下载 FFmpeg 开发库 (BtbN shared) ..." -ForegroundColor Cyan
+    $zip = Join-Path $FFMPEG "ffmpeg.zip"
+    $ffUrl   = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl-shared.zip"
+    $ffProxy = "https://ghproxy.com/https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl-shared.zip"
+    if (-not (Get-FileOrProxy $ffUrl $ffProxy $zip 40000000)) { throw "FFmpeg 下载失败" }
+    if (-not (Get-Command python -ErrorAction SilentlyContinue)) { throw "需要 python 来解压 FFmpeg" }
+    $env:LONGCUT_TOOL_DIR = $FFMPEG
+    python -c @"
+import os, zipfile
+ff = os.environ['LONGCUT_TOOL_DIR']
+z = zipfile.ZipFile(os.path.join(ff,'ffmpeg.zip')); z.extractall(ff)
+root = None
+for dp,_,_ in os.walk(ff):
+    if os.path.exists(os.path.join(dp,'include','libavcodec','avcodec.h')):
+        root = dp; break
+if root and os.path.abspath(root) != os.path.abspath(ff):
+    for e in os.listdir(root):
+        s = os.path.join(root,e); d = os.path.join(ff,e)
+        if not os.path.exists(d): os.rename(s,d)
+    try: os.rmdir(root)
+    except OSError: pass
+print('FFMPEG_DIR=', os.path.abspath(ff))
+"@
+    Assert-Exit "python (FFmpeg 解压)"
+}
+$ffSub = Get-ChildItem $FFMPEG -Directory -ErrorAction SilentlyContinue | Where-Object {
+    Test-Path (Join-Path $_.FullName "include\libavcodec\avcodec.h")
+} | Select-Object -First 1
+if ($ffSub) {
+    $env:FFMPEG_DIR = $ffSub.FullName
+    Write-Host "    FFMPEG_DIR = $($ffSub.FullName)" -ForegroundColor Green
+} elseif (Test-Path (Join-Path $FFMPEG "include\libavcodec\avcodec.h")) {
+    $env:FFMPEG_DIR = $FFMPEG
+    Write-Host "    FFMPEG_DIR = $FFMPEG" -ForegroundColor Green
+} else {
+    throw "未能定位 FFmpeg 头文件, 请手动设置 FFMPEG_DIR。"
+}
+
+# ---- 4) 构建 ------------------------------------------------------------
+# workspace 清单在 src/Cargo.toml, 仓库根目录没有 Cargo.toml, 必须先切进去。
+$srcDir = Join-Path $ProjectDir "src"
+if (-not (Test-Path (Join-Path $srcDir "Cargo.toml"))) {
+    throw "找不到 workspace 清单: $srcDir\Cargo.toml"
+}
+$target = if ($UseGnu) { "x86_64-pc-windows-gnu" } else { "x86_64-pc-windows-msvc" }
+Write-Host "==> 开始编译 longcut ($target) ..." -ForegroundColor Cyan
+Push-Location $srcDir
+try {
+    if ($UseGnu) {
+        $bash = Get-Command bash -ErrorAction SilentlyContinue
+        if (-not $bash) { throw "GNU 构建需要 Git Bash (bash.exe) 在 PATH 中" }
+        # 360 会拦 rustc 删除临时 .o, build-gnu.sh 的 save-temps 模式是已验证绕行方案。
+        $env:LONGCUT_SAVE_TEMPS = "1"
+        & $bash.Source (Join-Path $TOOLS "build-gnu.sh") -p concat --bin longcut -j 2
+        Assert-Exit "tools/build-gnu.sh"
+        Write-Host "==> 完成。产物: $srcDir\target-gnu\$target\debug\longcut.exe" -ForegroundColor Green
+    } else {
+        $vsWhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+        $vsPath = & $vsWhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath 2>$null
+        $vsDevCmd = Join-Path $vsPath "Common7\Tools\VsDevCmd.bat"
+        if (Test-Path $vsDevCmd) {
+            cmd /c "call ""$vsDevCmd"" && cargo build --target $target -p concat --bin longcut"
+        } else {
+            & "$CARGO_HOME\bin\cargo.exe" build --target $target -p concat --bin longcut
+        }
+        Assert-Exit "cargo build"
+        Write-Host "==> 完成。产物: $srcDir\target\$target\debug\longcut.exe" -ForegroundColor Green
+    }
+} finally {
+    Pop-Location
+}

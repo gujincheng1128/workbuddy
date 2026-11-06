@@ -1,0 +1,31 @@
+# 龙儿剪辑 LongCut —— Cargo 配置
+# 使用 rsproxy.cn 国内镜像加速 crates.io 拉取（沙箱/国内网络友好）。
+[source.crates-io]
+replace-with = "rsproxy-sparse"
+
+[source.rsproxy-sparse]
+registry = "sparse+https://rsproxy.cn/index/"
+
+[registries.rsproxy]
+index = "https://rsproxy.cn/crates.io-index"
+
+[net]
+git-fetch-with-cli = true
+
+# windows-gnu 目标用 MinGW-w64 的 gcc 链接，绕开 MSVC/WinSDK。
+# 注意：rustc 1.99 起已移除 -C ar / -C ranlib（归档改用内建 llvm-ar），
+# 传了会直接报 "error: `-C ar`: this option has been removed"。
+# 仅保留 -C dlltool（windows-gnu 生成导入库必需，写死绝对路径最稳）。
+#
+# 【换机/换目录须知】Cargo 不解析 target.*.linker 的相对路径，也不支持在
+# config 里做环境变量插值，所以下面两行是本机绝对路径。迁移工作区时必须
+# 同步改这两行；或者在调用方用环境变量覆盖，效果等价且无需改本文件：
+#   CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER=<...>/mingw64/bin/gcc.exe
+#   CARGO_TARGET_X86_64_PC_WINDOWS_GNU_RUSTFLAGS="-C dlltool=<...>/bin/dlltool.exe"
+# tools/build-gnu.sh 已用 $PRJ 拼出全部路径，是推荐入口；这里保留给
+# 直接敲 cargo 命令的场景。改 linker 会改变 fingerprint，务必留一次完整构建窗口。
+[target.x86_64-pc-windows-gnu]
+linker = "D:/AiSof/WorkBuddy/Concat-0.2.9/tools/mingw/mingw64/bin/gcc.exe"
+rustflags = [
+  "-C", "dlltool=D:/AiSof/WorkBuddy/Concat-0.2.9/tools/mingw/mingw64/bin/dlltool.exe",
+]

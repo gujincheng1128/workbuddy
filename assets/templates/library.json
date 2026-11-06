@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "updated": "2026-11-06",
+  "note": "模板索引。路径相对于 assets/templates/；模板本身为 JSON，可热加载，无需重编译。M1 阶段尚为设计产物，运行时加载逻辑见 docs/TEMPLATE-SYSTEM.zh.md。",
+  "templates": [
+    {
+      "id": "basic-opener",
+      "name": "基础开场",
+      "version": "1.0.0",
+      "path": "samples/basic-opener/template.json",
+      "aspect": "16:9",
+      "tags": ["opener", "vlog"],
+      "thumbnail": null
+    },
+    {
+      "id": "travel-recap",
+      "name": "旅行回顾",
+      "version": "1.0.0",
+      "path": "samples/travel-recap/template.json",
+      "aspect": "9:16",
+      "tags": ["travel", "recap", "vertical"],
+      "thumbnail": null
+    }
+  ]
+}

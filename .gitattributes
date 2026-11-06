@@ -1,0 +1,7 @@
+# Auto detect text files and perform LF normalization
+* text=auto eol=lf
+
+# Shell scripts must stay LF: the windows-gnu CI runs them under Git Bash,
+# and a CRLF shebang/line ends with "bad interpreter" and breaks the build.
+*.sh text eol=lf
+*.bash text eol=lf

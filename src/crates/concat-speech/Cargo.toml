@@ -1,0 +1,60 @@
+[package]
+name = "concat-speech"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Speech in and out: on-device transcription with whisper.cpp, and text to speech with Chatterbox and the phone's own voice."
+
+[dependencies]
+concat-host.workspace = true
+concat-media.workspace = true
+serde = { version = "1", features = ["derive"] }
+serde_json.workspace = true
+
+# Model downloads. Blocking on purpose: downloads run on their own thread,
+# and an async HTTP stack would be a second runtime's worth of dependencies
+# for one GET.
+ureq = "2"
+
+# Chatterbox: driven through ONNX Runtime directly, with its GPT-2 tokenizer read by the tokenizers crate - the
+# pure-Rust regex backend, so no C library rides along. Behind `chatterbox`,
+# which the desktop app turns on: a gigabyte of model is not for a phone.
+ort = { workspace = true, optional = true }
+# Where ONNX Runtime is made ready, the one place for the cutout's models
+# and these: on an Intel Mac it is loaded at first use, and not at all on a
+# macOS older than it. concat-vision's manifest also picks the runtime API
+# version ort asks for, per target.
+concat-vision = { workspace = true, optional = true, features = ["infer"] }
+tokenizers = { version = "0.23", optional = true, default-features = false, features = ["fancy-regex"] }
+
+# What a run says about itself: which model loaded, how long a read took,
+# where a loop ran out. Through the facade, so the window's log file and a
+# terminal both get it; see concat-host's logs.rs.
+log = { version = "0.4", features = ["std"] }
+
+# Transcription: whisper.cpp in-process. Built from source by cmake at build
+# time; on macOS with Metal so the encoder runs on the GPU. `raw-api` for
+# ggml's backend registry: where whisper.cpp is a shared build, its CPU
+# kernels are loaded by hand (transcribe.rs, `cpu_backend`).
+whisper-rs = { version = "0.16", features = ["raw-api"] }
+
+
+[target.'cfg(target_os = "macos")'.dependencies]
+whisper-rs = { version = "0.16", features = ["metal"] }
+# The CoreML provider, so Chatterbox can run on the Mac's own GPU and Neural
+# Engine when Settings › Speech asks for it. Pulls pyke's CoreML build of the
+# runtime in place of the plain one.
+ort = { workspace = true, optional = true, features = ["coreml"] }
+
+# DirectML, so Chatterbox runs on any Direct3D 12 GPU where the runtime
+# has the provider. The shipped Windows bundle links Microsoft's CPU build
+# instead, so there it runs on the CPU; concat-vision's manifest says why.
+[target.'cfg(target_os = "windows")'.dependencies]
+ort = { workspace = true, optional = true, features = ["directml"] }
+
+[features]
+chatterbox = ["dep:ort", "dep:tokenizers", "dep:concat-vision"]
+
+[lints]
+workspace = true

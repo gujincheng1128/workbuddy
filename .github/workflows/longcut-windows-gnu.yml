@@ -1,0 +1,179 @@
+name: LongCut Windows GNU
+
+# Build / verify / package lane for the MinGW-w64 (x86_64-pc-windows-gnu)
+# target. The six upstream workflows cover msvc / mac / linux / mobile; none
+# of them builds windows-gnu, which is the only lane this project has verified.
+#
+# NOTE (2026-11-06): the build, gate, staging, unit-test and MSI steps are
+# the same ones run locally on Windows. The definition has been rehearsed
+# locally (runner preflight + test-gnu.sh all + gate), but a real
+# GitHub-hosted run has not happened: this workspace has no .git, gh CLI or
+# Actions access. The preflight step exports the runner-local gnu linker, so
+# the machine-specific paths in .cargo/config.toml cannot leak into cargo.
+# On the first workflow_dispatch, still check rustup host, libclang and dotnet
+# in the log, then pin the action tags to commit SHAs once green.
+#
+# Upstream pins every action to a commit SHA. This new lane starts with tags
+# so it can run at all; pin them after the first green run.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'tools/**'
+      - 'scripts/**'
+      - '.cargo/**'
+      - 'assets/templates/**'
+      - 'assets/windows/**'
+      - '.github/workflows/longcut-windows-gnu.yml'
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'tools/**'
+      - 'scripts/**'
+      - '.cargo/**'
+      - 'assets/templates/**'
+      - 'assets/windows/**'
+      - '.github/workflows/longcut-windows-gnu.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: longcut-gnu-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-verify:
+    runs-on: windows-latest
+    # release fat LTO (~64 min) + a full debug test build (~40 min) +
+    # bootstrap downloads, WiX and smoke. 240 was tight once tests joined.
+    timeout-minutes: 360
+    env:
+      # Project-local toolchain, matching tools/build-gnu.sh. No C: writes.
+      CARGO_HOME: ${{ github.workspace }}/.cargo
+      RUSTUP_HOME: ${{ github.workspace }}/.rustup
+      NUGET_PACKAGES: ${{ github.workspace }}/tools/nuget-packages
+      DOTNET_CLI_HOME: ${{ github.workspace }}/tools/dotnet-home
+      # save-temps only works around the local 360 deleting rustc's .o files;
+      # a runner has no 360 and fat LTO otherwise leaves ~12 GB of scratch.
+      # build-gnu.sh still exports the runner-local dlltool RUSTFLAGS and the
+      # src/target-gnu target dir in either mode.
+      LONGCUT_SAVE_TEMPS: '0'
+      # The shipping profile: release + fat LTO + panic=abort + strip=symbols.
+      LONGCUT_PROFILE_DIR: 'app'
+      RUSTUP_TOOLCHAIN: stable-x86_64-pc-windows-gnu
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Rewrite the machine-local absolute paths baked into .cargo/config.toml
+      # (D:/AiSof/WorkBuddy/Concat-0.2.9) to this runner's checkout path. The
+      # windows-gnu linker is overridden again by the preflight step, but the
+      # rustflags dlltool line is NOT, so a stale D: path would make the final
+      # PE link fail on a hosted runner. Working copy only; not committed.
+      - name: Rewrite .cargo/config.toml paths for this runner
+        shell: bash
+        run: |
+          WS="$GITHUB_WORKSPACE"
+          WS="${WS//\\//}"
+          echo "[ci] GITHUB_WORKSPACE = $WS"
+          sed -i 's#D:/AiSof/WorkBuddy/Concat-0.2.9#'"$WS"'#g' .cargo/config.toml
+          echo "[ci] patched config.toml:"
+          sed -n '27,31p' .cargo/config.toml
+
+      - name: Runner preflight (first-run diagnostics)
+        shell: bash
+        run: bash tools/ci-runner-preflight.sh
+
+      - name: Cache cargo registry, toolchain and target
+        uses: actions/cache@v4
+        with:
+          path: |
+            .cargo/registry
+            .cargo/git
+            .rustup/toolchains
+            src/target-gnu
+          key: longcut-gnu-${{ runner.os }}-${{ hashFiles('src/Cargo.lock') }}
+          restore-keys: |
+            longcut-gnu-${{ runner.os }}-
+
+      - name: Install Rust (gnu host, project-local)
+        shell: bash
+        run: |
+          mkdir -p tools/_tmp
+          curl -sSf https://sh.rustup.rs -o tools/_tmp/rustup-init.sh
+          sh tools/_tmp/rustup-init.sh -y --no-modify-path --profile minimal \
+             --default-toolchain stable-x86_64-pc-windows-gnu
+          "$CARGO_HOME/bin/rustup.exe" component add rustfmt clippy \
+             --toolchain stable-x86_64-pc-windows-gnu
+
+      - name: Prerequisites (MinGW / FFmpeg / CMake)
+        shell: bash
+        run: |
+          python -m pip install --quiet py7zr
+          bash tools/bootstrap-mingw.sh
+          bash tools/bootstrap-ffmpeg-retry.sh
+          bash tools/bootstrap-cmake-v2.sh
+
+      - name: Resolve libclang.dll
+        shell: bash
+        run: |
+          if [ -f tools/llvm/bin/libclang.dll ]; then
+            echo "vendored libclang.dll present"; exit 0
+          fi
+          mkdir -p tools/llvm/bin
+          for c in "/c/Program Files/LLVM/bin/libclang.dll" \
+                   "/c/Program Files (x86)/LLVM/bin/libclang.dll" \
+                   "$LLVM_PATH/bin/libclang.dll"; do
+            if [ -f "$c" ]; then cp "$c" tools/llvm/bin/libclang.dll; echo "copied from $c"; exit 0; fi
+          done
+          echo "::error::tools/llvm/bin/libclang.dll is required by ffmpeg-sys bindgen." \
+               "Commit the vendored DLL or install LLVM on the runner."
+          exit 1
+
+      - name: Build longcut.exe (windows-gnu, --profile app)
+        shell: bash
+        run: bash tools/build-gnu.sh --profile app -p concat --bin longcut -j 2
+
+      - name: Stage portable bundle (app profile)
+        shell: bash
+        run: bash tools/stage-portable.sh
+
+      # The test binaries live in target-gnu/.../debug/deps, with no runtime
+      # DLL beside them. test-gnu.sh puts the just-staged bundle on PATH, so
+      # this step must stay after staging. It is serial: concat-export's
+      # preview tests collide under libtest's default parallelism.
+      - name: Rust unit tests (batch-a + batch-b, serial)
+        shell: bash
+        env:
+          LONGCUT_TEST_THREADS: '1'
+        run: bash tools/test-gnu.sh all
+
+      - name: Verification gate
+        shell: pwsh
+        run: ./scripts/ci/verify-longcut.ps1
+
+      - name: Clean-PATH smoke of the staged bundle
+        shell: pwsh
+        run: ./scripts/ci/smoke-windows.ps1 -Bundle ./dist/LongCut-win64-gnu
+
+      - name: Install WiX 4 (project-local dotnet tool)
+        shell: pwsh
+        run: |
+          dotnet tool install --tool-path ./tools/wix --version 4.0.5 wix
+          ./tools/wix/wix.exe --version
+
+      - name: Build .msi installer
+        shell: pwsh
+        run: ./tools/build-installer.ps1
+
+      - name: Archive portable bundle + installer
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: longcut-win64-gnu
+          path: |
+            dist/LongCut-win64-gnu/
+            dist/*.msi
+          retention-days: 7
+          if-no-files-found: error

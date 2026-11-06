@@ -1,0 +1,35 @@
+{
+  "manifest": {
+    "id": "basic-opener",
+    "name": "基础开场",
+    "version": "1.0.0",
+    "author": "longcut",
+    "description": "主视频 + 可选照片推拉 + 背景音乐 + 标题",
+    "tags": ["opener", "vlog"],
+    "aspect": "16:9",
+    "defaultDuration": 10.0,
+    "slots": [
+      {"id":"main_video","role":"main_video","accepts":["video"],"min":1,"max":1,"preferredDuration":8.0},
+      {"id":"photo","role":"photo","accepts":["image"],"min":0,"max":3,"preferredDuration":2.0,"kenBurns":true},
+      {"id":"music","role":"music","accepts":["audio"],"min":0,"max":1},
+      {"id":"title","role":"title_text","accepts":["text"],"min":0,"max":1,"placeholder":"{{title}}"}
+    ]
+  },
+  "blueprint": {
+    "video": {"width":1920,"height":1080,"rateNum":30000,"rateDen":1001},
+    "tracks": [
+      {"id":"T1","kind":"video"},
+      {"id":"T2","kind":"video"},
+      {"id":"T3","kind":"audio"}
+    ],
+    "clips": [
+      {"slot":"main_video","track":"T1","start":0,"duration":"{{slot.main_video.duration}}",
+       "scale":1.05,"filters":[{"id":"gaussian_blur","params":{"radius":1.5}}],
+       "transition_in":{"id":"fade","duration":1.0}},
+      {"slot":"photo","track":"T2","start":"{{prev.end}}","duration":"{{slot.photo.duration}}","kenBurns":true,"opacity":0.9},
+      {"slot":"music","track":"T3","start":0,"duration":"{{slot.music.duration}}","volume":0.6},
+      {"slot":"title","track":"T2","start":1.0,"duration":3.0,"text":"{{title}}",
+       "textStyle":{"size":72,"align":"center","color":"#ffffff"}}
+    ]
+  }
+}

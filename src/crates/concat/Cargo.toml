@@ -1,0 +1,189 @@
+[package]
+name = "concat"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "Concat, the editor window: the Slint front end that drives the engine."
+
+# LongCut fork: the package stays `concat` (the whole workspace and CI refer
+# to it by that name), while the desktop binary is `longcut` -- what a user
+# launches. The window itself is the library, so the binary here and the
+# Android activity in concat-android are each a few lines over the same code.
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "longcut"
+path = "src/main.rs"
+
+# Slint is taken under its GPL-3.0-only option to sit beside the AGPL engine.
+# See ../../../THIRD_PARTY_NOTICES.md for why those two combine legally.
+#
+# default-features is off because `renderer-femtovg` (the OpenGL path) is a
+# default. Enabling both compiles glutin and the whole GL renderer for
+# nothing: i-slint-backend-winit picks wgpu over GL in
+# default_renderer_factory, and cfg's the GL path out of the fallback list
+# entirely. The rest of this list is slint's default set, reproduced verbatim
+# minus that one renderer.
+#
+# 1.18 at least: the iOS scene delegate that iOS 27 requires (see
+# scripts/ios-app.sh).
+#
+# Upstream uses Skia on every platform. The LongCut windows-gnu build cannot:
+# skia-bindings publishes prebuilt binaries only for MSVC, and a source build
+# needs chromium.googlesource.com (unreachable here). The desktop target
+# therefore falls back to Slint's software renderer; iOS and Android still
+# enable Skia. See the LongCut note beside the desktop feature list below.
+#
+# Three platforms, three feature sets. The desktop and iOS draw through the
+# winit backend, iOS without the system tray; Android draws through Slint's
+# android-activity backend, which owns the window and the renderer itself
+# (see platform.rs). The desktop renderer differs from iOS/Android for the
+# reason above; the wgpu features stay shared with the engine's compositor.
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+# Where the desktop really is: Windows' known folder, which OneDrive may
+# have moved, and the XDG user dirs, which name it in the desktop's own
+# language. New projects default to a folder on it.
+dirs = "6"
+slint = { version = "1.18", default-features = false, features = [
+    "std",
+    "backend-default",
+    "renderer-software",
+    # LongCut / windows-gnu 适配：rust-skia 的预编译二进制只有 MSVC 目标，
+    # 上游 skia-binaries 0.153.3 的 152 个资产里没有任何 windows-gnu 包；
+    # 回退源码编译又需要 chromium.googlesource.com（代理 502）。
+    # 桌面端暂时改用 Slint 自带的软件渲染器（renderer-software 已在上面）。
+    # 若日后换回 MSVC 工具链，取消下一行注释即可恢复 Skia 渲染。
+    # "renderer-skia",
+    "accessibility",
+    "compat-1-2",
+    "system-tray",
+    # The custom title bar: platform.rs needs the winit window to hide the
+    # native title bar (macOS traffic-light overlay) and to start window
+    # drags from the strip's drag region.
+    "unstable-winit-030",
+    # The renderer draws on a wgpu device the window creates and shares with
+    # the engine's compositor, so a monitor frame is a texture Slint shows
+    # as it is - see gpu.rs.
+    "unstable-wgpu-30",
+    # The base fonts registered for the window from the bytes concat-text
+    # embeds, so a preset card is drawn in its own face; see fonts.rs.
+    "unstable-fontique-011",
+] }
+# Native file and folder dialogs, which Slint deliberately does not have.
+rfd = "0.17"
+# Reveal an exported file in the platform's file manager.
+opener = { version = "0.8", features = ["reveal"] }
+
+# Native Wayland file drops; see wayland_drop.rs. winit 0.30 reports a
+# dropped file on X11 and not on Wayland, so the window listens for one
+# itself on the display winit opened. The same two crates winit draws
+# with, libwayland loaded at run time as winit loads it; libc for the
+# pipe the drop is read through and the poll that waits on it.
+[target.'cfg(target_os = "linux")'.dependencies]
+wayland-client = "0.31"
+wayland-backend = { version = "0.3", features = ["client_system", "dlopen"] }
+libc = "0.2"
+
+# `_exit`, the way out past the C++ libraries' static destructors; see
+# `leave` in lib.rs.
+[target.'cfg(target_os = "macos")'.dependencies]
+libc = "0.2"
+
+[target.'cfg(target_os = "ios")'.dependencies]
+slint = { version = "1.18", default-features = false, features = [
+    "std",
+    "backend-winit",
+    "renderer-software",
+    "renderer-skia",
+    "accessibility",
+    "compat-1-2",
+    "unstable-winit-030",
+    "unstable-wgpu-30",
+    # The base fonts registered for the window from the bytes concat-text
+    # embeds, so a preset card is drawn in its own face; see fonts.rs.
+    "unstable-fontique-011",
+] }
+# The system's pickers for Import and Photos for an export, through the
+# Objective-C runtime; see src/ios.rs. The versions Slint's winit backend
+# already builds on iOS, so nothing new is compiled for them.
+objc2 = "0.6"
+block2 = "0.6"
+objc2-foundation = { version = "0.3", default-features = false, features = [
+    "std",
+    "block2",
+    "NSArray",
+    "NSError",
+    "NSObject",
+    "NSString",
+    "NSURL",
+] }
+
+[target.'cfg(target_os = "android")'.dependencies]
+slint = { version = "1.18", default-features = false, features = [
+    "std",
+    "backend-android-activity-06",
+    "renderer-software",
+    "renderer-skia",
+    "accessibility",
+    "compat-1-2",
+    "unstable-wgpu-30",
+    # The base fonts registered for the window from the bytes concat-text
+    # embeds, so a preset card is drawn in its own face; see fonts.rs.
+    "unstable-fontique-011",
+] }
+
+[dependencies]
+# The log facade. The window writes `log::warn!`; where that ends up is
+# concat-host's logs.rs, opened by whichever entry point started this run.
+log = "0.4"
+# The one device: created in gpu.rs, handed to Slint and to the monitor.
+wgpu.workspace = true
+pollster.workspace = true
+
+# The engine, through the host layer. `gpu` turns on the wgpu compositor for
+# the monitor and the export; the CPU compositor stays as the fallback.
+concat-core.workspace = true
+concat-media.workspace = true
+concat-project.workspace = true
+concat-export.workspace = true
+# The compositor's limits the window's device is opened with
+# (`gpu::MEMORY_BUDGET`); linked through the host already.
+concat-render = { workspace = true, features = ["gpu"] }
+concat-host = { workspace = true, features = ["gpu"] }
+concat-speech = { workspace = true, features = ["chatterbox"] }
+# The Settings sheet's Automation page: the Concat API on a socket while the
+# window is open. JSON-RPC only; the gRPC feature stays with concat-cli.
+concat-server.workspace = true
+concat-api.workspace = true
+# `longcut --mcp`: the same API to an AI agent, as an MCP server on standard
+# input and output, with no window (docs/MCP.md).
+concat-mcp.workspace = true
+# The effect catalogue: the inspector's shelves and each link's knobs.
+concat-effects.workspace = true
+# The cutout's mapping from a stage press to a source fraction; the model
+# itself runs in the host.
+concat-vision.workspace = true
+# The title painter's font list: the families on the machine and the ones
+# in a file, for the Text inspector's picker and its import button.
+concat-text.workspace = true
+
+# Remembered preferences, as a small JSON file in the config directory.
+serde = { version = "1", features = ["derive"] }
+serde_json.workspace = true
+# Text presets are TOML files, as the effect manifests are.
+toml = "1.1"
+
+# JPEG encoding for the media artwork cache.
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+
+[build-dependencies]
+slint-build = "1.18"
+# The .exe's icon, for Explorer and the Start menu, as a Windows resource.
+# Used only when the target is Windows; see build.rs.
+winresource = "0.1"
+
+[lints]
+workspace = true

@@ -1,0 +1,58 @@
+# The prebuilt dependencies CI downloads, each pinned to one file and the
+# sha256 of its bytes. scripts/ci/fetch.sh is the only thing that reads
+# this, and it refuses a file whose digest is not the one written here.
+#
+#   name  url  sha256
+#
+# To bump one: change the URL, run `scripts/ci/fetch.sh NAME /tmp/x`, and
+# put the digest it reports in place of the old one. Where a version is
+# also named elsewhere, change it there too; the comment above each group
+# says where.
+
+# FFmpeg 8.1, BtbN's LGPL shared builds: no x264, x265 or fdk-aac, since
+# Concat encodes H.264, HEVC and AAC on the platform's own encoders. A
+# month's last autobuild, not `latest`: BtbN keeps those, where the daily
+# ones are deleted after a fortnight, and `latest` changes under a build
+# every day.
+ffmpeg-linux64      https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-09-30-13-08/ffmpeg-n8.1.3-9-g29e619e767-linux64-lgpl-shared-8.1.tar.xz      d4d7b6936f492c0b866b1cb4a29a1bbae09d6a064b4ec4eb90c95bed7969535a
+ffmpeg-linuxarm64   https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-09-30-13-08/ffmpeg-n8.1.3-9-g29e619e767-linuxarm64-lgpl-shared-8.1.tar.xz   d44838f375c66cf31a8b1473b6f8bad76e5c7dac55870c4d96a75c907a52ba2d
+ffmpeg-win64        https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-09-30-13-08/ffmpeg-n8.1.3-9-g29e619e767-win64-lgpl-shared-8.1.zip          3e47bda1607740550141e37c0e49d1e5182b34699f15adfd137ee266d346811a
+ffmpeg-winarm64     https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-09-30-13-08/ffmpeg-n8.1.3-9-g29e619e767-winarm64-lgpl-shared-8.1.zip       7674d11915c95c8f65eeec36b329917c3023f6bae5786549cc47aed52cc1cea7
+
+# ONNX Runtime, Microsoft's own builds. 1.28.0 is the version ort
+# 2.0.0-rc.13 is built against (ORT_VERSION in ci.yml and build-app.yml);
+# 1.23.2 is the last Microsoft made for Intel Macs (ORT_INTEL_MAC_VERSION).
+# The Windows ones are the CPU builds; build-app.yml says why.
+onnxruntime-linux-x64       https://github.com/microsoft/onnxruntime/releases/download/v1.28.0/onnxruntime-linux-x64-1.28.0.tgz       a3e1b79d7bb1bf09696ce675f49e4064e6c81f6202b8225624fff0e93f8d6407
+onnxruntime-linux-aarch64   https://github.com/microsoft/onnxruntime/releases/download/v1.28.0/onnxruntime-linux-aarch64-1.28.0.tgz   e15ff8b5d85afe6c144d97c6fd432254bf76a219daaf17658087d6ecb3e8f0bb
+onnxruntime-win-x64         https://github.com/microsoft/onnxruntime/releases/download/v1.28.0/onnxruntime-win-x64-1.28.0.zip         abef733dacbe2f571547a7150b479b5cb9cc0df22f96c24983a42cadb1b4f8bc
+onnxruntime-win-arm64       https://github.com/microsoft/onnxruntime/releases/download/v1.28.0/onnxruntime-win-arm64-1.28.0.zip       cbe4547463ece092b505c3581376ed5896d22b5429f39d5e645e425ecdd369ad
+onnxruntime-osx-x86_64      https://github.com/microsoft/onnxruntime/releases/download/v1.23.2/onnxruntime-osx-x86_64-1.23.2.tgz      d10359e16347b57d9959f7e80a225a5b4a66ed7d7e007274a15cae86836485a6
+
+# The Android emulator's ONNX Runtime (x86_64), from Microsoft's AAR on
+# Maven Central: ort publishes none for that ABI. src/scripts/android-libs.sh
+# takes jni/x86_64/libonnxruntime.so out of it. Phones (arm64) link ort's own.
+onnxruntime-android         https://repo1.maven.org/maven2/com/microsoft/onnxruntime/onnxruntime-android/1.28.0/onnxruntime-android-1.28.0.aar   f351a0638696f54b35184290dbc001d66daae17281ad0b548d2c70347d53b8a9
+
+
+# The Linux packagers: nfpm (NFPM_VERSION in build-app.yml) for the .deb
+# and .rpm, and appimagetool with the AppImage runtime it embeds, both a
+# named release rather than `continuous`. The runtime is handed to
+# appimagetool with --runtime-file, so it fetches nothing of its own.
+nfpm-x86_64                  https://github.com/goreleaser/nfpm/releases/download/v2.47.0/nfpm_2.47.0_Linux_x86_64.tar.gz           0660ca602b2d2d2ae4781a06c692b3eeb9d437ffea05b831d76e41f4a3188783
+nfpm-arm64                   https://github.com/goreleaser/nfpm/releases/download/v2.47.0/nfpm_2.47.0_Linux_arm64.tar.gz            1c0f5f2999b9a974bfb04fdb0cc3306096de530ac5dbb25d739cc5f5219c919c
+appimagetool-x86_64          https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage          ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0
+appimagetool-aarch64         https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-aarch64.AppImage         f0837e7448a0c1e4e650a93bb3e85802546e60654ef287576f46c71c126a9158
+appimage-runtime-x86_64      https://github.com/AppImage/type2-runtime/releases/download/20251108/runtime-x86_64                    2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d
+appimage-runtime-aarch64     https://github.com/AppImage/type2-runtime/releases/download/20251108/runtime-aarch64                   00cbdfcf917cc6c0ff6d3347d59e0ca1f7f45a6df1a428a0d6d8a78664d87444
+
+# LLVM for Windows: libclang for bindgen, clang-cl on arm64, and
+# llvm-objdump for scripts/ci/isa-scan.sh.
+llvm-win64                   https://github.com/llvm/llvm-project/releases/download/llvmorg-21.1.0/LLVM-21.1.0-win64.exe            e751be8019b7500b100456c915b4b3c339d8d88b81b3aad49796d39f700e7ef3
+llvm-woa64                   https://github.com/llvm/llvm-project/releases/download/llvmorg-21.1.0/LLVM-21.1.0-woa64.exe            3f181aecc83d0eb40fb966ce18b97a3602871dbff83fc91745e7e0fd6661a7f7
+
+# Intel's Software Development Emulator, which the smoke tests run the
+# x86_64 bundles under posing as an Ivy Bridge (AVX, no AVX2): the CPU the
+# bundles promise to start on. See scripts/ci/smoke-*.
+sde-win                      https://downloadmirror.intel.com/924984/sde-external-10.13.1-2026-07-28-win.tar.xz                    74e626ede09b0baa5011fc9e51b58627ea92c3fc0bae5fd7db34b490f335f651
+sde-lin                      https://downloadmirror.intel.com/924984/sde-external-10.13.1-2026-07-28-lin.tar.xz                    94e97d623fec54385686e1e7ba65ebc9941748c05ee451423948334892bf2b50
