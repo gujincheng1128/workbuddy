@@ -69,6 +69,7 @@ audit/
 # 100 MB per-file limit). Everything else here is rebuilt by the workflow.
 /dist/
 /src/target-gnu/
+/src/target-gnu-fresh/
 /tools/_tmp/
 /tools/mingw/
 /tools/ffmpeg/

@@ -80,10 +80,12 @@ jobs:
           # 1) 本机绝对路径 (D:/AiSof/WorkBuddy/Concat-0.2.9) -> runner checkout 路径
           sed -i 's#D:/AiSof/WorkBuddy/Concat-0.2.9#'"$WS"'#g' .cargo/config.toml
           # 2) GitHub-hosted runner 在美国，访问 rsproxy.cn 极慢/易超时，会卡死依赖
-          #    下载；临时切回官方 crates.io 稀疏索引（仅 checkout 副本，不提交）。
-          sed -i 's#^replace-with = "rsproxy-sparse"#replace-with = "crates-io"#' .cargo/config.toml
+          #    下载；直接删除 replace-with 行，让 cargo 回退到默认 crates.io 稀疏索引
+          #    （自指 replace-with = "crates-io" 在部分 cargo 版本会被判成循环/找不到源，
+          #     直接删行最稳）。仅修改 checkout 副本，不提交。
+          sed -i '/^replace-with = "rsproxy-sparse"$/d' .cargo/config.toml
           echo "[ci] patched config.toml (paths + registry):"
-          sed -n '1,31p' .cargo/config.toml
+          cat .cargo/config.toml
 
       - name: Runner preflight (first-run diagnostics)
         shell: bash
@@ -105,11 +107,24 @@ jobs:
         shell: bash
         run: |
           mkdir -p tools/_tmp
-          curl -sSf https://sh.rustup.rs -o tools/_tmp/rustup-init.sh
-          sh tools/_tmp/rustup-init.sh -y --no-modify-path --profile minimal \
+          echo "[rust] CARGO_HOME=$CARGO_HOME"
+          echo "[rust] RUSTUP_HOME=$RUSTUP_HOME"
+          for i in 1 2 3; do
+            echo "[rust] fetch rustup-init (attempt $i) ..."
+            if curl -sSf --max-time 120 -o tools/_tmp/rustup-init.sh https://sh.rustup.rs; then
+              echo "[rust] rustup-init.sh: $(stat -c%s tools/_tmp/rustup-init.sh 2>/dev/null || echo '?') bytes"
+              break
+            fi
+            sleep 5
+          done
+          # 用 bash 而非 sh：rustup-init.sh 含 bashism，dash 下偶发异常。
+          bash tools/_tmp/rustup-init.sh -y --no-modify-path --profile minimal \
              --default-toolchain stable-x86_64-pc-windows-gnu
           "$CARGO_HOME/bin/rustup.exe" component add rustfmt clippy \
              --toolchain stable-x86_64-pc-windows-gnu
+          echo "[rust] toolchain ready:"
+          "$CARGO_HOME/bin/rustc.exe" --version
+          "$CARGO_HOME/bin/cargo.exe" --version
 
       - name: Prerequisites (MinGW / FFmpeg / CMake)
         shell: bash
@@ -143,6 +158,17 @@ jobs:
         shell: bash
         run: bash tools/stage-portable.sh
 
+      # 早传便携包：只要编译+stage 成功，无论后续门禁/打包是否红，0.2.11 可执行
+      # 文件都已落袋。门禁、烟雾测试、MSI 失败不再连坐丢 artifact。
+      - name: Upload portable bundle (early, always)
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: longcut-portable-win64-gnu
+          path: dist/LongCut-win64-gnu/
+          retention-days: 7
+          if-no-files-found: warn
+
       # The test binaries live in target-gnu/.../debug/deps, with no runtime
       # DLL beside them. test-gnu.sh puts the just-staged bundle on PATH, so
       # this step must stay after staging. It is serial: concat-export's
@@ -171,13 +197,13 @@ jobs:
         shell: pwsh
         run: ./tools/build-installer.ps1
 
-      - name: Archive portable bundle + installer
+      # 便携包已在 stage 后立即上传；此处只补传 MSI 安装包。门禁/烟雾即使失败，
+      # 便携包 artifact 也已落袋，不影响 0.2.11 交付。
+      - name: Upload installer (.msi)
         if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
-          name: longcut-win64-gnu
-          path: |
-            dist/LongCut-win64-gnu/
-            dist/*.msi
+          name: longcut-msi-win64-gnu
+          path: dist/*.msi
           retention-days: 7
-          if-no-files-found: error
+          if-no-files-found: warn

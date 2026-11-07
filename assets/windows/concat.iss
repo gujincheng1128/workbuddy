@@ -5,7 +5,7 @@
 ; person double-clicks, and it puts LongCut in the Start menu and can take
 ; it out again. Everything it needs is handed in on the command line:
 ;
-;   iscc /DVersion=0.2.10 /DArch=x64compatible /DSuffix=win64-gnu ^
+;   iscc /DVersion=0.2.11 /DArch=x64compatible /DSuffix=win64-gnu ^
 ;        /DStage=C:\...\dist\LongCut-win64-gnu /DOut=C:\...\dist ^
 ;        assets\windows\concat.iss
 ;

@@ -8,7 +8,9 @@ set -eo pipefail
 PRJ="${LONGCUT_PROJECT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -W)}"
 PROFILE_DIR="${LONGCUT_PROFILE_DIR:-debug}"
 OUT="$PRJ/src/target-gnu/x86_64-pc-windows-gnu/$PROFILE_DIR"
-FF="$PRJ/tools/ffmpeg/ffmpeg-master-latest-win64-gpl-shared/bin"
+# bootstrap-ffmpeg-retry.sh 解压后会把文件上移到 tools/ffmpeg/ 并写入
+# FFMPEG_DIR.txt；这里读同一份来源，避免写死子目录名导致 stage 找不到 DLL。
+FF="$(cat "$PRJ/tools/ffmpeg/FFMPEG_DIR.txt" 2>/dev/null || echo "$PRJ/tools/ffmpeg/ffmpeg-master-latest-win64-gpl-shared")/bin"
 MW="$PRJ/tools/mingw/mingw64/bin"
 STAGE="$PRJ/dist/LongCut-win64-gnu"
 
