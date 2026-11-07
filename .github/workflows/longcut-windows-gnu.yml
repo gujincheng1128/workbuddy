@@ -79,10 +79,10 @@ jobs:
           # GitHub-hosted runner 在美国，访问 rsproxy.cn 极慢/易超时，会卡死依赖
           # 下载；直接删除 replace-with 行，让 cargo 回退到默认 crates.io 稀疏索引
           sed -i '/^replace-with = "rsproxy-sparse"$/d' .cargo/config.toml
-          # 读取 .cargo/config.toml 里的机器本地路径前缀，替换为 runner 工作区
-          OLD_PREFIX=$(grep -oP '^[A-Za-z]:[\\/][^"]*?Concat-0\.2\.9' .cargo/config.toml | head -1 | tr -d '"')
-          echo "[ci] OLD_PREFIX=$OLD_PREFIX"
-          sed -i 's#'"$OLD_PREFIX"'#'"$WS"'#g' .cargo/config.toml
+          # 把 .cargo/config.toml 里烙进去的本机绝对路径前缀（盘符:/.../Concat-0.2.9）
+          # 替换为 runner 的工作区路径。用正则匹配，不把任何具体盘符路径写进 workflow 文件，
+          # 避免触发 validate-workflow.py 的 "no build-machine absolute path" 检查。
+          sed -i 's#[A-Za-z]:[\\/][^"]*Concat-0\.2\.9#'"$WS"'#g' .cargo/config.toml
           echo "[ci] patched config.toml (paths + registry):"
           cat .cargo/config.toml
 
