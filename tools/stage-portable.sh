@@ -36,6 +36,10 @@ for d in "${MW_DLLS[@]}"; do cp -f "$MW/$d" "$STAGE/$d"; done
 cp -f "$OUT/longcut.exe" "$STAGE/longcut.exe"
 cp -f "$OUT/LICENSE" "$OUT/THIRD_PARTY_NOTICES.md" "$OUT/BUILD_INFO.txt" "$STAGE/"
 cp -f "$PRJ/docs/RUNTIME-DEPENDENCIES.md" "$STAGE/"
+echo "[stage] debug: ls tools/portable/:" >&2
+ls -la "$PRJ/tools/portable/" 2>&1 || echo "[stage] debug: tools/portable/ missing" >&2
+echo "[stage] debug: git ls-files tools/portable/:" >&2
+git -C "$PRJ" ls-files tools/portable/ 2>&1 || echo "[stage] debug: git ls-files failed" >&2
 cp -f "$PRJ/tools/portable/run-longcut.bat" "$PRJ/tools/portable/README.txt" "$STAGE/"
 
 # build-gnu.sh 写入的 BUILD_INFO.txt 里 exe= 是构建机上的绝对路径
