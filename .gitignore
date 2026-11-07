@@ -98,7 +98,8 @@ audit/
 /tools/cmake/
 /tools/_7z/
 /tools/llvm-mingw/
-/tools/portable/
+# /tools/portable/ 是便携包的「静态源文件」目录（README.txt + run-longcut.bat），
+# 由 tools/stage-portable.sh 拷贝进 dist/ 便携包，必须受版本控制，故不忽略。
 /tools/vstools/
 
 # Local build / CI logs (machine-local, never committed)
