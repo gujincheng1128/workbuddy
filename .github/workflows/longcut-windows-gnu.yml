@@ -154,6 +154,18 @@ jobs:
         shell: bash
         run: bash tools/build-gnu.sh --profile app -p concat --bin longcut -j 2
 
+      - name: Debug: list tools/portable before stage
+        shell: bash
+        run: |
+          echo "[debug] GITHUB_WORKSPACE=$GITHUB_WORKSPACE"
+          echo "[debug] pwd=$(pwd)"
+          echo "[debug] ls -la tools/portable/:"
+          ls -la tools/portable/ 2>&1 || echo "[debug] tools/portable/ missing"
+          echo "[debug] git ls-files tools/portable/:"
+          git ls-files tools/portable/ 2>&1 || echo "[debug] git ls-files failed"
+          echo "[debug] find tools/portable -maxdepth 2:"
+          find tools/portable -maxdepth 2 2>&1 || echo "[debug] find failed"
+
       - name: Stage portable bundle (app profile)
         shell: bash
         run: bash tools/stage-portable.sh
