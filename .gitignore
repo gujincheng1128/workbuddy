@@ -99,3 +99,8 @@ audit/
 /tools/llvm-mingw/
 /tools/portable/
 /tools/vstools/
+
+# Local build / CI logs (machine-local, never committed)
+build-app.log
+build-*.log
+*.wixpdb
