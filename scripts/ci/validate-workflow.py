@@ -119,7 +119,9 @@ required = [
 ]
 positions = []
 for label, needle in required:
-    hit = next((i for i, b in enumerate(blocks) if needle in b), None)
+    # 同一个 needle 可能出现多次（如 actions/upload-artifact@v4 上传便携包和 MSI），
+    # 取最后一次出现，保证与实际执行顺序一致。
+    hit = next((i for i, b in reversed(list(enumerate(blocks))) if needle in b), None)
     check("step: " + label, hit is not None, "not found: " + needle)
     positions.append(hit)
 # Non-decreasing, not strictly increasing: one step may legitimately run

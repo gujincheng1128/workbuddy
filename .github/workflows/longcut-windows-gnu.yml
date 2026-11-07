@@ -67,23 +67,22 @@ jobs:
       - uses: actions/checkout@v4
 
       # Rewrite the machine-local absolute paths baked into .cargo/config.toml
-      # (D:/AiSof/WorkBuddy/Concat-0.2.9) to this runner's checkout path. The
-      # windows-gnu linker is overridden again by the preflight step, but the
-      # rustflags dlltool line is NOT, so a stale D: path would make the final
-      # PE link fail on a hosted runner. Working copy only; not committed.
+      # to this runner's checkout path. The preflight step overrides the linker,
+      # but the rustflags dlltool line is NOT overridden, so the stale path must
+      # be fixed here for the final PE link to succeed on the runner.
       - name: Rewrite .cargo/config.toml for this runner
         shell: bash
         run: |
           WS="$GITHUB_WORKSPACE"
           WS="${WS//\\//}"
           echo "[ci] GITHUB_WORKSPACE = $WS"
-          # 1) 本机绝对路径 (D:/AiSof/WorkBuddy/Concat-0.2.9) -> runner checkout 路径
-          sed -i 's#D:/AiSof/WorkBuddy/Concat-0.2.9#'"$WS"'#g' .cargo/config.toml
-          # 2) GitHub-hosted runner 在美国，访问 rsproxy.cn 极慢/易超时，会卡死依赖
-          #    下载；直接删除 replace-with 行，让 cargo 回退到默认 crates.io 稀疏索引
-          #    （自指 replace-with = "crates-io" 在部分 cargo 版本会被判成循环/找不到源，
-          #     直接删行最稳）。仅修改 checkout 副本，不提交。
+          # GitHub-hosted runner 在美国，访问 rsproxy.cn 极慢/易超时，会卡死依赖
+          # 下载；直接删除 replace-with 行，让 cargo 回退到默认 crates.io 稀疏索引
           sed -i '/^replace-with = "rsproxy-sparse"$/d' .cargo/config.toml
+          # 读取 .cargo/config.toml 里的机器本地路径前缀，替换为 runner 工作区
+          OLD_PREFIX=$(grep -oP '^[A-Za-z]:[\\/][^"]*?Concat-0\.2\.9' .cargo/config.toml | head -1 | tr -d '"')
+          echo "[ci] OLD_PREFIX=$OLD_PREFIX"
+          sed -i 's#'"$OLD_PREFIX"'#'"$WS"'#g' .cargo/config.toml
           echo "[ci] patched config.toml (paths + registry):"
           cat .cargo/config.toml
 
