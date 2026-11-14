@@ -64,7 +64,7 @@ jobs:
       RUSTUP_TOOLCHAIN: stable-x86_64-pc-windows-gnu
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Rewrite the machine-local absolute paths baked into .cargo/config.toml
       # to this runner's checkout path. The preflight step overrides the linker,
@@ -91,7 +91,7 @@ jobs:
         run: bash tools/ci-runner-preflight.sh
 
       - name: Cache cargo registry, toolchain and target
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             .cargo/registry
@@ -161,7 +161,7 @@ jobs:
       # 文件都已落袋。门禁、烟雾测试、MSI 失败不再连坐丢 artifact。
       - name: Upload portable bundle (early, always)
         if: github.event_name != 'pull_request'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: longcut-portable-win64-gnu
           path: dist/LongCut-win64-gnu/
@@ -200,7 +200,7 @@ jobs:
       # 便携包 artifact 也已落袋，不影响 0.2.11 交付。
       - name: Upload installer (.msi)
         if: github.event_name != 'pull_request'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: longcut-msi-win64-gnu
           path: dist/*.msi
