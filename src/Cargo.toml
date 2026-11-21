@@ -38,7 +38,7 @@ schemars = "1"
 # the engine's compositor draw on one device and a preview frame never leaves
 # the GPU.
 wgpu = "30"
-pollster = "0.4"
+pollster = "1.0"
 
 # ONNX Runtime, for the cutout models. The binaries come prebuilt for every
 # target the app ships on, with the platform's own accelerator behind them:
@@ -53,7 +53,7 @@ pollster = "0.4"
 # `load-dynamic` 打开 ort-sys/disable-linking，其 build.rs 立即返回 ——
 # 不下载、不链接预编译库；ONNX Runtime 改为运行时按需加载 onnxruntime.dll。
 # 这也与上游 Intel Mac 的做法一致（首次使用时加载，缺失时仅 AI 功能降级）。
-ort = { version = "=2.0.0-rc.13", default-features = false, features = ["std", "ndarray", "tracing", "download-binaries", "tls-native", "copy-dylibs", "load-dynamic"] }
+ort = { version = "=2.0.0-rc.15", default-features = false, features = ["std", "ndarray", "tracing", "download-binaries", "tls-native", "copy-dylibs", "load-dynamic"] }
 
 [workspace.lints.rust]
 missing_docs = "warn"
